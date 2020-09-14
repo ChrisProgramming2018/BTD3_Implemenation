@@ -75,7 +75,7 @@ class ReplayBuffer(object):
         if self.full:
             pass
         idxs = [x for x in range(self.idx - self.k, self.idx)]
-        print(idxs)
+        # print(idxs)
         obses = self.obses[idxs]
         next_obses = self.next_obses[idxs]
         obses_aug = obses.copy()

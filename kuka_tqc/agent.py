@@ -30,15 +30,17 @@ class TQC(object):
         self.device = args.device
         self.write_tensorboard = False
         self.top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
+        self.n_nets = args.n_nets
+        self.top_quantiles_to_drop_per_net = args.top_quantiles_to_drop_per_net
         self.target_entropy = args.target_entropy 
         self.quantiles_total = self.critic.n_quantiles * self.critic.n_nets
         self.log_alpha = torch.zeros((1,), requires_grad=True, device=args.device)
         self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=args.lr_alpha)
         self.total_it = 0
         self.step = 0
-        self.beta = 0
+        self.beta = 0.5
 
-    def update_beta(self, replay_buffer, writer, total_tim):
+    def update_beta(self, replay_buffer, writer, total_timesteps):
         obs, action, reward, next_obs, not_done, obs_aug, obs_next_aug = replay_buffer.get_last_k_trajectories()  # not done are 0 if episodes ends
         store_batch = []
         # create a R_i for the k returns from the buffer
@@ -48,7 +50,7 @@ class TQC(object):
             if not_done[idx][0] == 0:
                 i = 0
             R_i =  self.discount**i * reward[idx][0]
-            print("Ri", R_i)
+            # print("Ri", R_i)
             store_batch.append((obs[idx], action[idx], R_i))
             i += 1
         delta = 0
@@ -61,16 +63,27 @@ class TQC(object):
             r = r.unsqueeze(1).to(self.device)
             state_aug = self.decoder.create_vector(s)
             next_z = self.critic(state_aug.detach(), a.detach())
-            #print(next_z)
-            loss = quantile_huber_loss_f(next_z, r, self.device)
-            delta +=  loss
+            Q = 0
+            for net in next_z[0]:
+                Q += torch.mean(net).data.item()
+            Q *= 1. / self.n_nets
+            delta +=  Q
         delta *= (1. / len(store_batch))
-
-        print("delta ", delta)
-            print("loss", loss)
-        writer.add_scalar('Reward', episode_reward, total_timesteps)
-        self.beta = torch.clamp(self.beta - delta, 0., 1.).item()
-        print("beta ", self.beta)
+        
+        writer.add_scalar('delta', delta, total_timesteps)
+        
+        dif  = self.beta - delta
+        writer.add_scalar('dif', dif, total_timesteps)
+        self.beta = max(0., min(dif, 1))
+        writer.add_scalar('beta', self.beta, total_timesteps)
+        # compute how many quntile to drop if beta is greate 0.5 
+        # if beta gets closer to 1 drop more qantuile
+        if self.beta > 0.5 and self.top_quantiles_to_drop_per_net > 0:
+            self.top_quantiles_to_drop_per_net -= 1
+        if self.beta < 0.5 and self.top_quantiles_to_drop_per_net < 5:
+            self.top_quantiles_to_drop_per_net += 1
+        writer.add_scalar('drop-qunantile', self.top_quantiles_to_drop_per_net , total_timesteps)
+        self.top_quantiles_to_drop = self.top_quantiles_to_drop_per_net * self.n_nets
 
     
     def train(self, replay_buffer, writer, iterations):
@@ -113,7 +126,7 @@ class TQC(object):
                 sorted_z_aug, _ = torch.sort(next_z_aug.reshape(self.batch_size, -1))
                 sorted_z_part_aug = sorted_z_aug[:,:self.quantiles_total - self.top_quantiles_to_drop]
                 target_aug = reward + not_done * self.discount * (sorted_z_part_aug - alpha * next_log_pi_aug)
-            
+             
             target = (target + target_aug) / 2.
             #---update critic
             cur_z = self.critic(state, action)

@@ -67,5 +67,6 @@ if __name__ == "__main__":
     parser.add_argument('--policy', default="TCQ", type=str)
     parser.add_argument('--repeat_update', default=1, type=int)         # Number of iterations to wait before the policy network (Actor model) is updated
     parser.add_argument('--noise_clip', default=0.5, type=float) 
+    parser.add_argument('--update_beta_freq', default=1, type=int) 
     arg = parser.parse_args()
     main(arg)

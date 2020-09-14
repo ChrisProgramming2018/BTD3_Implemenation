@@ -183,6 +183,7 @@ def train_agent(args):
     #evaluations.append(evaluate_policy(policy, writer, total_timesteps, args, env))
     #save_model = file_name + '-{}reward_{:.2f}-agent{}'.format(episode_num, evaluations[-1], args.policy) 
     #policy.save(save_model)
+    done_counter =  deque(maxlen=100)
     while total_timesteps <  args.max_timesteps:
         tb_update_counter += 1
         # If the episode is done
@@ -191,8 +192,8 @@ def train_agent(args):
             #env.seed(random.randint(0, 100))
             scores_window.append(episode_reward)
             average_mean = np.mean(scores_window)
-            if total_timesteps > args.start_timesteps:
-                policy.update_beta(replay_buffer)
+            if total_timesteps > args.start_timesteps and episode_num % args.update_beta_freq == 0:
+                policy.update_beta(replay_buffer, writer, total_timesteps)
             if tb_update_counter > args.tensorboard_freq:
                 print("Write tensorboard")
                 tb_update_counter = 0
@@ -201,9 +202,16 @@ def train_agent(args):
                 writer.flush()
             # If we are not at the very beginning, we start the training process of the model
             if total_timesteps != 0:
+                if episode_timesteps < 50:
+                    done_counter.append(1)
+                else:
+                    done_counter.append(0)
+                goals = sum(done_counter)
                 text = "Total Timesteps: {} Episode Num: {} ".format(total_timesteps, episode_num) 
                 text += "Episode steps {} ".format(episode_timesteps)
+                text += "Goal last 100 ep : {} ".format(goals)
                 text += "Reward: {:.2f}  Average Re: {:.2f} Time: {}".format(episode_reward, np.mean(scores_window), time_format(time.time()-t0))
+                writer.add_scalar('Goal_freq', goals, total_timesteps)
                 
                 print(text)
                 write_into_file(pathname, text)
