@@ -25,7 +25,7 @@ class ReplayBuffer(object):
             batch_actions.append(np.array(action, copy=False))
             batch_rewards.append(np.array(reward, copy=False))
             batch_dones.append(np.array(done, copy=False))
-        return np.array(batch_states), np.array(batch_next_states), np.array(batch_actions), np.array(batch_rewards).reshape(-1, 1), np.array(batch_dones).reshape(-1, 1)
+        return np.array(batch_states), np.array(batch_next_states), batch_actions, np.array(batch_rewards).reshape(-1, 1), np.array(batch_dones).reshape(-1, 1)
     
     def get_last_k_trajectories(self):
         ind = [x for x in range(self.ptr - self.k, self.ptr)]

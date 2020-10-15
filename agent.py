@@ -4,6 +4,7 @@ import numpy as np
 import time
 from torch.utils.tensorboard import SummaryWriter
 from collections import deque
+from utils import mkdir
 
 class Agent():
     def __init__(self, state_size, action_size, config):
@@ -12,7 +13,7 @@ class Agent():
         self.Q = np.zeros([state_size, action_size])
         self.debug_Q = np.zeros([state_size, action_size])
         self.Q_shift = np.zeros([state_size, action_size])
-        self.r = np.zeros([state_size, action_size])
+        self.r = np.zeros([state_size, action_size])  
         self.counter = np.zeros([state_size, action_size])
         self.gamma = config["gamma"]
         self.epsilon = 1
@@ -27,7 +28,7 @@ class Agent():
         self.env = gym.make(config["env_name"])
         self.memory = ReplayBuffer((1,),(1,),config["buffer_size"], config["device"])
         self.gamma_iql = 0.99
-        self.lr_sh = 0.07
+        self.lr_sh = 0.7
         self.ratio = 1. / action_size
         self.eval_q_inverse = 50000
         self.episodes_qinverse = int(5e6)
@@ -116,16 +117,23 @@ class Agent():
                 self.eval_policy(episode=1)
                 self.render_env =False
             state, action, _, next_state, _ = self.memory.sample(1)
-            self.counter[state,action] +=1
+            self.counter[state, action] +=1
             total_num = np.sum(self.counter[state,:])
+            print("counter", self.counter[state,0])
             action_prob = self.counter[state] / total_num
             #print(np.sum(action_prob))
             assert(np.isclose(np.sum(action_prob),1))
             # update Q shift 
             Q_shift_target = self.lr_sh *(self.gamma_iql * np.max(self.Q[next_state]))
+            #print("q values", self.Q[state])
             self.Q_shift[state, action] = (1 - self.lr_sh) * self.Q_shift[state, action] + Q_shift_target
-            # compute n a 
-            n_a = action_prob[0][0][action] - self.Q_shift[state, action]
+            # compute n a
+            action = action[0][0]
+
+            action_prob = action_prob[0][0]
+            if action_prob[action] == 0:
+                action_prob[action] =  np.finfo(float).eps
+            n_a = np.log(action_prob[action]) - self.Q_shift[state, action]
             
             # update reward function
             for i in range(20):
@@ -142,11 +150,11 @@ class Agent():
     def update_r(self, state, action, n_a, action_prob):
         r_old = (1 - self.lr) * self.r[state, action]
         part1 = n_a
-        print("part1", n_a)
+        #print("part1", n_a)
         part2 = self.ratio * self.sum_over_action(state, action, action_prob)
         r_new = self.lr * (part1 + part2)
-        print("r old ", r_old)
-        print("r_new", r_new)
+        #print("r old ", r_old)
+        #print("r_new", r_new)
         self.r[state, action] = r_old + r_new       
     
     def sum_over_action(self, state, a, action_prob):
@@ -157,8 +165,10 @@ class Agent():
             res += self.r[state, b] - self.compute_n_a(state, b, action_prob)
         return res
     
-    def compute_n_a(self, state, a, action_prob):
-        return action_prob[0][0][a] - self.Q_shift[state, a]
+    def compute_n_a(self, state, action, action_prob):
+        if action_prob[action] == 0:
+            action_prob[action] = np.finfo(float).eps
+        return np.log(action_prob[action]) - self.Q_shift[state, action]
     
     def eval_policy(self, random_agent=False, use_expert=False, use_debug=False, episode=10):
         if use_expert:
@@ -209,6 +219,7 @@ class Agent():
             self.writer.add_scalar('Eval_Average_penelties', aver_penelties, self.steps)
        
     def save_q_table(self, filename="policy"):
+        mkdir("", filename)
         with open(filename + '/Q.npy', 'wb') as f:
             np.save(f, self.Q)
 
@@ -232,7 +243,11 @@ class Agent():
                 next_state, reward, done, _ = self.env.step(action)
                 state = next_state
                 self.memory.add(state, action, reward, next_state, done, done)
+        self.save_q_table()
 
+
+    def policy_diff(self):
+        pass
 
 
     def train(self):
@@ -252,7 +267,7 @@ class Agent():
                 score += reward
                 self.optimize(state, action, reward, next_state)
                 self.epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay* i_episode)
-                
+                self.memory.add(state, action, reward, next_state, done, done) 
                 if done:
                     break
                 state = next_state
@@ -278,20 +293,22 @@ class Agent():
         done  = False
         score = 0
         self.steps += 1
+        epsiode_steps =  0
         while True:
-            action = self.act(state, self.episode, True)
+            action = self.act(state, 0, True)
             next_state, _, done, _ = self.env.step(action)
             reward = self.r[state, action]
             self.optimize(state, action, reward, next_state, debug=True)
-            self.epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay* self.steps)
+
             score += reward
+            epsiode_steps += 1
             if done:
                 break
             state = next_state
 
         self.total_reward += score
         average_reward = self.total_reward / self.steps
-        print("Total_steps {} Reward {:.2f} Average Reward {:.2f} epsilon {:.2f}".format(self.steps, score, average_reward, self.epsilon))
+        print("Episode {} Reward {:.2f} Average Reward {:.2f}  epi steps {}".format(self.steps, score, average_reward, epsiode_steps))
 
         
         

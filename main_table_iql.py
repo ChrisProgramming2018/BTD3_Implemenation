@@ -1,27 +1,9 @@
 import gym
 import os
 import json
-import numpy as np
-import time
 import argparse
-from replay_buffer2 import ReplayBuffer 
 from agent import Agent
-import sys 
-
-def mkdir(base, name):
-    """
-    Creates a direction if its not exist
-    Args:
-       param1(string): base first part of pathname
-       param2(string): name second part of pathname
-    Return: pathname 
-    """
-    path = os.path.join(base, name)
-    if not os.path.exists(path):
-        os.makedirs(path)
-    return path
-
-
+from utils import mkdir
 
 
 def main(args):
@@ -44,14 +26,13 @@ def main(args):
     print("Action space ", action_space)
     agent = Agent(state_space, action_space, param)
     lr = 0.7
-    agent.eval_policy(use_expert=True)
-    agent.eval_policy(random_agent=True)
+    #agent.eval_policy(use_expert=True)
+    #agent.eval_policy(random_agent=True)
     # sys.exit()
     if continue_iql:
         print("Continue")
-        #agent.create_expert_policy()
-        #agent.memory.save_memory("memory")
-        agent.invers_q()
+        agent.create_expert_policy()
+        agent.invers_q(True)
     else:    
         agent.train()
         agent.save_q_table()

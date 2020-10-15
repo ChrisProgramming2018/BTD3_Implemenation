@@ -2,7 +2,7 @@
   "env_name": "Taxi-v2",
   "lr":0.7,
   "gamma":0.618,
-  "decay":0.0001,
+  "decay":0.01,
   "min_epsilon":0.01,
   "buffer_size": 100000,
   "device": "cuda"
