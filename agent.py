@@ -18,6 +18,8 @@ class Agent():
         self.gamma = config["gamma"]
         self.epsilon = 1
         self.lr = config["lr"]
+        self.lr_iql_q = config["lr_iql_q"]
+        self.lr_iql_r = config["lr_iql_r"]
         self.min_epsilon = config["min_epsilon"]
         self.max_epsilon =1
         self.episode = 15000
@@ -30,13 +32,15 @@ class Agent():
         self.gamma_iql = 0.99
         self.lr_sh = 0.7
         self.ratio = 1. / action_size
-        self.eval_q_inverse = 50000
-        self.episodes_qinverse = int(5e6)
+        self.eval_q_inverse = 5000
+        self.episodes_qinverse = int(1e6)
+        self.update_freq = config['freq_q']
         self.steps = 0
-        pathname = ""
+        pathname = "lr_inv_q {} lr_inv_r {} freq {}".format(self.lr_iql_q, self.lr_iql_r, self.update_freq)
         tensorboard_name = str(config["locexp"]) + '/runs/' + pathname 
         self.writer = SummaryWriter(tensorboard_name)
         self.last_100_reward_errors = deque(maxlen=100) 
+        self.average_same_action = deque(maxlen=100) 
     
     def act(self, state, epsilon, eval_pi=False, use_debug=False):
 
@@ -100,7 +104,7 @@ class Agent():
 
     
     def invers_q(self, continue_train=False):
-        
+        self.memory.load_memory("memory") 
         if not continue_train:
             print("clean policy")
             self.Q = np.zeros([self.state_size, self.action_size])
@@ -108,18 +112,19 @@ class Agent():
         for epi in range(1, self.episodes_qinverse + 1):
             self.steps += 1
             text = "Inverse Episode {} \r".format(epi)
+            #print(text)
             print(text, end= "")
             if epi % self.eval_q_inverse == 0:
-                self.render_env = True
+                self.render_env = False
                 #self.eval_policy(use_expert=True, episode=1)
                 #self.eval_policy(random_agent=True, episode=1)
                 # self.reward_loss()
-                self.eval_policy(episode=1)
+                self.eval_policy(episode=5)
                 self.render_env =False
             state, action, _, next_state, _ = self.memory.sample(1)
             self.counter[state, action] +=1
             total_num = np.sum(self.counter[state,:])
-            print("counter", self.counter[state,0])
+            #print("counter", self.counter[state,0])
             action_prob = self.counter[state] / total_num
             #print(np.sum(action_prob))
             assert(np.isclose(np.sum(action_prob),1))
@@ -136,23 +141,24 @@ class Agent():
             n_a = np.log(action_prob[action]) - self.Q_shift[state, action]
             
             # update reward function
-            for i in range(20):
+            for i in range(self.update_freq):
                 self.update_r(state, action, n_a, action_prob)
             self.debug_train()
             # update Q function
-            # self.update_q(state, action, next_state)
+            self.policy_diff(state, action)
+            self.update_q(state, action, next_state)
 
     def update_q(self, state, action, next_state):
-        q_old = (1 - self.lr) * self.Q[state, action]
-        q_new = self.lr *(self.r[state, action] + self.gamma_iql * np.max(self.Q[next_state]))
+        q_old = (1 - self.lr_iql_q) * self.Q[state, action]
+        q_new = self.lr_iql_q *(self.r[state, action] + self.gamma_iql * np.max(self.Q[next_state]))
         self.Q[state, action] = q_old + q_new
         
     def update_r(self, state, action, n_a, action_prob):
-        r_old = (1 - self.lr) * self.r[state, action]
+        r_old = (1 - self.lr_iql_r) * self.r[state, action]
         part1 = n_a
         #print("part1", n_a)
         part2 = self.ratio * self.sum_over_action(state, action, action_prob)
-        r_new = self.lr * (part1 + part2)
+        r_new = self.lr_iql_r * (part1 + part2)
         #print("r old ", r_old)
         #print("r_new", r_new)
         self.r[state, action] = r_old + r_new       
@@ -243,11 +249,23 @@ class Agent():
                 next_state, reward, done, _ = self.env.step(action)
                 state = next_state
                 self.memory.add(state, action, reward, next_state, done, done)
-        self.save_q_table()
+        self.memory.save_memory("memory")
 
 
-    def policy_diff(self):
-        pass
+    def policy_diff(self, state, expert_action):
+        action = np.argmax([self.Q])
+        print("Ivq action ", action)
+        print("Expert action ", expert_action)
+        if action == expert_action:
+            self.average_same_action.append(1)
+        else:
+            self.average_same_action.append(0)
+        
+        ave_same_action = np.sum(self.average_same_action)
+        print("same action", ave_same_action)
+        #self.writer.add_scalar('Average_Reward_loss', a, self.steps)
+
+
 
 
     def train(self):
