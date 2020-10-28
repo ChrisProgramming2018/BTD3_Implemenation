@@ -13,6 +13,7 @@ def main(args):
     print(param)
     param["lr_iql_q"] = args.lr_iql_q
     param["lr_iql_r"] = args.lr_iql_r
+    param["lr_q_sh"] = args.lr_iql_r
     param["freq_q"] = args.freq_q
     continue_iql = True
     #continue_iql = False
@@ -28,31 +29,36 @@ def main(args):
     print("State space ", state_space)
     print("Action space ", action_space)
     agent = Agent(state_space, action_space, param)
-    lr = 0.7
-    #agent.eval_policy(use_expert=True)
-    #agent.eval_policy(random_agent=True)
-    #sys.exit()
-    if continue_iql:
-        print("Continue")
+    
+    if args.mode == "create expert policy":
+        print("Create expert policy")
         agent.create_expert_policy()
-        agent.load_q_table()
-        agent.invers_q()
-    else:    
+        agent.memory.save_memory("memory")
+    elif args.mode == "train q table":
+        print("Create q table")
         agent.train()
         agent.save_q_table()
+    elif args.mode == "iql":
+        print("inverse rl")
         agent.invers_q()
 
-
-
+    elif args.mode == "eval iql":
+        print("Eval inverse rl")
+        agent.train(use_r=True)
+        agent.eval_inverse()
+    else:
+        print("mode not exists")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--param', default="param.json", type=str)
     parser.add_argument('--locexp', default="test", type=str)
-    parser.add_argument('--lr_iql_q', default=0.1, type=float)
-    parser.add_argument('--lr_iql_r', default=0.1, type=float)
+    parser.add_argument('--lr_iql_q', default=1e-3, type=float)
+    parser.add_argument('--lr_iql_r', default=1e-3, type=float)
+    parser.add_argument('--lr_q_sh', default=1e-3, type=float)
     parser.add_argument('--freq_q', default=1, type=int)
+    parser.add_argument('--mode', default="train q table", type=str)
     arg = parser.parse_args()
     mkdir("", arg.locexp)
     main(arg)

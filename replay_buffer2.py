@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from utils import mkdir
 
 class ReplayBuffer(object):
     """Buffer to store environment transitions."""
@@ -52,6 +52,8 @@ class ReplayBuffer(object):
         Use numpy save function to store the data in a given file
         """
 
+        # check directory exist and create it
+        mkdir("", filename)
 
         with open(filename + '/obses.npy', 'wb') as f:
             np.save(f, self.obses)
@@ -70,7 +72,8 @@ class ReplayBuffer(object):
         
         with open(filename + '/not_dones_no_max.npy', 'wb') as f:
             np.save(f, self.not_dones_no_max)
-    
+
+
     def load_memory(self, filename):
         """
         Use numpy load function to store the data in a given file
