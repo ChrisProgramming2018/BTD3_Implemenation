@@ -394,5 +394,36 @@ class Agent():
         average_reward = self.total_reward / self.steps
         print("Episode {} Reward {:.2f} Average Reward {:.2f}  epi steps {}".format(self.steps, score, average_reward, epsiode_steps))
 
-        
+
+    def train(self):
+      
+        total_timestep = 0
+        for i_episode in range(1, self.episode + 1):
+            score = 0
+            state = self.env.reset()
+            done  = False
+            steps = 0
+            while not done:
+                self.steps +=1
+                steps += 1
+                total_timestep += 1
+                action = self.act(state, self.epsilon)
+                next_state, reward, done, _ = self.env.step(action)
+                score += reward
+                self.optimize(state, action, reward, next_state)
+                self.epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay * i_episode)
+                
+                if done:
+                    break
+                state = next_state
+            
+            if i_episode % self.eval_frq == 0:
+                self.eval_policy()
+            
+            self.total_reward += score
+            average_reward = self.total_reward / i_episode
+            print("Episode {} Reward {:.2f} Average Reward {:.2f} steps {}  epsilon {:.2f}".format(i_episode, score, average_reward, steps, self.epsilon))
+            self.writer.add_scalar('Average_reward', average_reward, self.steps)
+            self.writer.add_scalar('Train_reward', score, self.steps)
+        self.trained_Q = self.Q
         
